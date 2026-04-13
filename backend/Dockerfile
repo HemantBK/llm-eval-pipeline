@@ -8,17 +8,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Extract dependencies from pyproject.toml and install them
-# We only install deps here, NOT the project itself (src/ isn't copied yet)
+# Copy pyproject.toml and extract+install only the dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install \
-    $(python -c "
-import tomllib
-with open('pyproject.toml', 'rb') as f:
-    data = tomllib.load(f)
-deps = data.get('project', {}).get('dependencies', [])
-print(' '.join(deps))
-")
+RUN python -c "import tomllib; data=tomllib.load(open('pyproject.toml','rb')); print('\n'.join(data['project']['dependencies']))" > /tmp/requirements.txt && \
+    pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 # === Stage 2: Runtime ===
 FROM python:3.11-slim
