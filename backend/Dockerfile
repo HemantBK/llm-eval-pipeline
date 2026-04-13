@@ -1,21 +1,29 @@
-# === Stage 1: Build ===
+# === Stage 1: Build — install dependencies only ===
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install build deps
+# Install build deps (gcc for C extensions, libpq-dev for asyncpg)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python deps
+# Extract dependencies from pyproject.toml and install them
+# We only install deps here, NOT the project itself (src/ isn't copied yet)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install \
+    $(python -c "
+import tomllib
+with open('pyproject.toml', 'rb') as f:
+    data = tomllib.load(f)
+deps = data.get('project', {}).get('dependencies', [])
+print(' '.join(deps))
+")
 
 # === Stage 2: Runtime ===
 FROM python:3.11-slim
 
-# Install runtime deps (libpq for asyncpg)
+# Install runtime deps (libpq for asyncpg, curl for healthcheck)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 curl && \
     rm -rf /var/lib/apt/lists/*
