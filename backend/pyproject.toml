@@ -27,6 +27,7 @@ dependencies = [
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
     "httpx",
     "locust>=2.29.0",
     "ruff>=0.7.0",
