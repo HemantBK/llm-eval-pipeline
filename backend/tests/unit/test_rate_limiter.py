@@ -23,7 +23,6 @@ def limiter(mock_redis):
 
 
 class TestRateLimiter:
-
     @pytest.mark.asyncio
     async def test_acquire_under_limit(self, limiter, mock_redis):
         mock_redis.incr = AsyncMock(return_value=5)  # 5 out of 15

@@ -1,8 +1,8 @@
 """Async CRUD repositories for all database operations."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 import structlog
 from sqlalchemy import func, select, update
@@ -55,19 +55,12 @@ class EvalRepository:
             values["completed_at"] = func.now()
         if pass_rate is not None:
             values["pass_rate"] = pass_rate
-        await self.session.execute(
-            update(EvalRun).where(EvalRun.id == run_id).values(**values)
-        )
+        await self.session.execute(update(EvalRun).where(EvalRun.id == run_id).values(**values))
 
-    async def list_runs(
-        self, limit: int = 50, offset: int = 0
-    ) -> Sequence[EvalRun]:
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> Sequence[EvalRun]:
         """List evaluation runs, most recent first."""
         result = await self.session.execute(
-            select(EvalRun)
-            .order_by(EvalRun.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            select(EvalRun).order_by(EvalRun.created_at.desc()).limit(limit).offset(offset)
         )
         return result.scalars().all()
 
@@ -119,7 +112,9 @@ class EvalRepository:
     ) -> tuple[Sequence[EvalResult], int]:
         """Get paginated results for a run with optional filters. Returns (results, total_count)."""
         query = select(EvalResult).where(EvalResult.run_id == run_id)
-        count_query = select(func.count()).select_from(EvalResult).where(EvalResult.run_id == run_id)
+        count_query = (
+            select(func.count()).select_from(EvalResult).where(EvalResult.run_id == run_id)
+        )
 
         if model:
             query = query.where(EvalResult.model_name == model)
@@ -135,9 +130,7 @@ class EvalRepository:
 
         return results.scalars().all(), total.scalar_one()
 
-    async def get_completed_prompt_model_pairs(
-        self, run_id: uuid.UUID
-    ) -> set[tuple[str, str]]:
+    async def get_completed_prompt_model_pairs(self, run_id: uuid.UUID) -> set[tuple[str, str]]:
         """Get all (prompt_id, model_name) pairs that have been scored — for resume support."""
         result = await self.session.execute(
             select(EvalResult.prompt_id, EvalResult.model_name)
@@ -300,7 +293,7 @@ class EvalRepository:
     ) -> DeadLetterQueue:
         """Add a failed evaluation to the dead letter queue."""
         # Exponential backoff: 1min for first retry
-        next_retry = datetime.now(timezone.utc) + timedelta(minutes=1)
+        next_retry = datetime.now(datetime.UTC) + timedelta(minutes=1)
 
         dlq_item = DeadLetterQueue(
             run_id=run_id,
@@ -317,6 +310,7 @@ class EvalRepository:
 
         # Metrics
         from app.metrics import dlq_added_total, dlq_pending_total
+
         dlq_added_total.labels(error_type=error_type, provider=model_name).inc()
         dlq_pending_total.inc()
 
@@ -330,7 +324,7 @@ class EvalRepository:
 
     async def get_retryable_dlq(self) -> Sequence[DeadLetterQueue]:
         """Get DLQ items ready for retry (next_retry < now and not exhausted)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(datetime.UTC)
         result = await self.session.execute(
             select(DeadLetterQueue)
             .where(DeadLetterQueue.status == "pending")
@@ -352,6 +346,7 @@ class EvalRepository:
         if item.retry_count >= item.max_retries:
             item.status = "exhausted"
             from app.metrics import dlq_exhausted_total, dlq_pending_total
+
             dlq_exhausted_total.inc()
             dlq_pending_total.dec()
             logger.error(
@@ -364,17 +359,16 @@ class EvalRepository:
             # Exponential backoff: 1min, 5min, 30min
             backoff_minutes = [1, 5, 30]
             delay = backoff_minutes[min(item.retry_count, len(backoff_minutes) - 1)]
-            item.next_retry = datetime.now(timezone.utc) + timedelta(minutes=delay)
+            item.next_retry = datetime.now(datetime.UTC) + timedelta(minutes=delay)
 
     async def mark_dlq_retried(self, dlq_id: uuid.UUID) -> None:
         """Mark a DLQ item as successfully retried."""
         from app.metrics import dlq_pending_total, dlq_retried_total
+
         dlq_retried_total.inc()
         dlq_pending_total.dec()
         await self.session.execute(
-            update(DeadLetterQueue)
-            .where(DeadLetterQueue.id == dlq_id)
-            .values(status="retried")
+            update(DeadLetterQueue).where(DeadLetterQueue.id == dlq_id).values(status="retried")
         )
 
     async def get_dlq_stats(self) -> dict:
@@ -383,8 +377,7 @@ class EvalRepository:
             select(
                 DeadLetterQueue.status,
                 func.count().label("count"),
-            )
-            .group_by(DeadLetterQueue.status)
+            ).group_by(DeadLetterQueue.status)
         )
         stats = {row.status: row.count for row in result.all()}
         return {

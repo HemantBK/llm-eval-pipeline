@@ -58,8 +58,8 @@ class OpenAIProvider(LLMProvider):
                 headers=headers,
                 timeout=config.timeout_s,
             )
-        except httpx.TimeoutException:
-            raise LLMTimeoutError("openai", config.timeout_s)
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError("openai", config.timeout_s) from exc
 
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -74,12 +74,12 @@ class OpenAIProvider(LLMProvider):
 
         try:
             text = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
+        except (KeyError, IndexError) as exc:
             raise LLMProviderError(
                 "openai",
                 200,
                 f"Unexpected response format: {str(data)[:300]}",
-            )
+            ) from exc
 
         token_count = 0
         usage = data.get("usage", {})

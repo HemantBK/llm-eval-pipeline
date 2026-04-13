@@ -20,9 +20,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     - Binds it to structlog context for all downstream logs
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Get or generate request ID
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:8])
 
@@ -85,12 +83,13 @@ class GracefulShutdownMiddleware(BaseHTTPMiddleware):
     def active_requests(self) -> int:
         return self._active_requests
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if self._shutting_down:
             return Response(
-                content='{"error": "server_shutting_down", "detail": "Server is shutting down, please retry"}',
+                content=(
+                    '{"error": "server_shutting_down",'
+                    ' "detail": "Server is shutting down, please retry"}'
+                ),
                 status_code=503,
                 media_type="application/json",
                 headers={"Retry-After": "5"},

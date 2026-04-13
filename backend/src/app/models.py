@@ -29,9 +29,7 @@ class EvalRun(Base):
 
     __tablename__ = "eval_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), default="pending", nullable=False
@@ -39,12 +37,8 @@ class EvalRun(Base):
     config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # models, rubric, params
     prompt_count: Mapped[int] = mapped_column(Integer, default=0)
     pass_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     results: Mapped[list["EvalResult"]] = relationship(
@@ -65,9 +59,7 @@ class EvalResult(Base):
 
     __tablename__ = "eval_results"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("eval_runs.id", ondelete="CASCADE"), nullable=False
     )
@@ -92,9 +84,7 @@ class EvalResult(Base):
     # Overall pass/fail
     overall_pass: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     run: Mapped["EvalRun"] = relationship(back_populates="results")
@@ -118,9 +108,7 @@ class JudgeScore(Base):
 
     __tablename__ = "judge_scores"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     result_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("eval_results.id", ondelete="CASCADE"), nullable=False
     )
@@ -132,9 +120,7 @@ class JudgeScore(Base):
     reasoning: Mapped[str] = mapped_column(Text, default="")
     judge_model: Mapped[str] = mapped_column(String(100), default="")
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     result: Mapped["EvalResult"] = relationship(back_populates="scores")
@@ -153,12 +139,8 @@ class DeadLetterQueue(Base):
 
     __tablename__ = "dead_letter_queue"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    run_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # What failed
     prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -177,13 +159,9 @@ class DeadLetterQueue(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="pending"
     )  # pending, retried, exhausted
-    next_retry: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    next_retry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("idx_dlq_status", "status"),
@@ -191,4 +169,7 @@ class DeadLetterQueue(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<DLQ {self.id} model={self.model_name} status={self.status} retries={self.retry_count}/{self.max_retries}>"
+        return (
+            f"<DLQ {self.id} model={self.model_name}"
+            f" status={self.status} retries={self.retry_count}/{self.max_retries}>"
+        )

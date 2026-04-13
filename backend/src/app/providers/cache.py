@@ -34,9 +34,7 @@ class ResponseCache:
         hash_val = hashlib.sha256(raw.encode()).hexdigest()
         return f"{self._prefix}:{hash_val}"
 
-    async def get(
-        self, prompt: str, model_name: str, temperature: float
-    ) -> LLMResponse | None:
+    async def get(self, prompt: str, model_name: str, temperature: float) -> LLMResponse | None:
         """
         Look up a cached response.
 
@@ -77,13 +75,15 @@ class ResponseCache:
 
         key = self._make_key(prompt, response.model_name, temperature)
 
-        data = json.dumps({
-            "text": response.text,
-            "token_count": response.token_count,
-            "model_name": response.model_name,
-            "provider": response.provider,
-            "original_latency_ms": response.latency_ms,
-        })
+        data = json.dumps(
+            {
+                "text": response.text,
+                "token_count": response.token_count,
+                "model_name": response.model_name,
+                "provider": response.provider,
+                "original_latency_ms": response.latency_ms,
+            }
+        )
 
         await self._redis.set(key, data, ex=self._ttl)
         logger.debug(
@@ -93,9 +93,7 @@ class ResponseCache:
             key=key[:20],
         )
 
-    async def invalidate(
-        self, prompt: str, model_name: str, temperature: float
-    ) -> None:
+    async def invalidate(self, prompt: str, model_name: str, temperature: float) -> None:
         """Remove a specific cache entry."""
         key = self._make_key(prompt, model_name, temperature)
         await self._redis.delete(key)

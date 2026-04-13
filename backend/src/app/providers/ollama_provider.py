@@ -57,14 +57,14 @@ class OllamaProvider(LLMProvider):
                 json=payload,
                 timeout=config.timeout_s,
             )
-        except httpx.ConnectError:
+        except httpx.ConnectError as exc:
             raise LLMProviderError(
                 "ollama",
                 0,
                 f"Cannot connect to Ollama at {self._base_url}. Is it running?",
-            )
-        except httpx.TimeoutException:
-            raise LLMTimeoutError("ollama", config.timeout_s)
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError("ollama", config.timeout_s) from exc
 
         latency_ms = int((time.perf_counter() - start) * 1000)
 

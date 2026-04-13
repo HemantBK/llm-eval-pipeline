@@ -1,8 +1,9 @@
 """FastAPI application factory with lifespan management, middleware, and DLQ worker."""
 
 import asyncio
+import contextlib
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 from fastapi import FastAPI
@@ -94,10 +95,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.dlq_worker.stop()
     if _dlq_task and not _dlq_task.done():
         _dlq_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await _dlq_task
-        except asyncio.CancelledError:
-            pass
     logger.info("DLQ worker stopped")
 
     # 3. Close connections

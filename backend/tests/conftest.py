@@ -1,14 +1,11 @@
 """Shared test fixtures — mock DB, mock Redis, mock LLM providers."""
 
 import asyncio
-import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 
-from app.providers.base import GenerateConfig, LLMResponse
+from app.providers.base import LLMResponse
 
 
 # ============================================================================
@@ -108,9 +105,7 @@ def mock_registry(mock_redis):
     mock_provider = MagicMock()
     mock_provider.name = "mock"
     mock_provider.default_model = "mock-model"
-    mock_provider.generate = AsyncMock(
-        return_value=make_llm_response()
-    )
+    mock_provider.generate = AsyncMock(return_value=make_llm_response())
 
     registry._providers = {"mock": mock_provider, "gemini": mock_provider}
     registry._breakers = {}

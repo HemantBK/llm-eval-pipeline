@@ -4,8 +4,8 @@ Wraps every provider with: cache → rate limiter → circuit breaker → retry 
 The orchestrator and judge engine ONLY talk to the registry, never to raw providers.
 """
 
-import structlog
 import redis.asyncio as aioredis
+import structlog
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -89,7 +89,9 @@ class ProviderRegistry:
         provider = self._providers.get(provider_name)
         if not provider:
             raise LLMProviderError(
-                provider_name, 0, f"Unknown provider: {provider_name}. Available: {self.available_providers}"
+                provider_name,
+                0,
+                f"Unknown provider: {provider_name}. Available: {self.available_providers}",
             )
 
         from app.metrics import (
@@ -131,34 +133,69 @@ class ProviderRegistry:
 
         # 4. Call with retry + metrics
         import time
+
         start = time.perf_counter()
         try:
             response = await self._call_with_retry(provider, prompt, config)
         except LLMTimeoutError:
-            llm_errors_total.labels(provider=provider_name, error_type="timeout").inc()
-            llm_calls_total.labels(provider=provider_name, model=provider.default_model, status="timeout").inc()
+            llm_errors_total.labels(
+                provider=provider_name,
+                error_type="timeout",
+            ).inc()
+            llm_calls_total.labels(
+                provider=provider_name,
+                model=provider.default_model,
+                status="timeout",
+            ).inc()
             breaker.on_failure()
             raise
         except LLMProviderError:
-            llm_errors_total.labels(provider=provider_name, error_type="provider_error").inc()
-            llm_calls_total.labels(provider=provider_name, model=provider.default_model, status="error").inc()
+            llm_errors_total.labels(
+                provider=provider_name,
+                error_type="provider_error",
+            ).inc()
+            llm_calls_total.labels(
+                provider=provider_name,
+                model=provider.default_model,
+                status="error",
+            ).inc()
             breaker.on_failure()
             if breaker.state.value == "open":
-                circuit_breaker_trips_total.labels(provider=provider_name).inc()
+                circuit_breaker_trips_total.labels(
+                    provider=provider_name,
+                ).inc()
                 circuit_breaker_open.labels(provider=provider_name).set(1)
             raise
         except Exception:
-            llm_errors_total.labels(provider=provider_name, error_type="unknown").inc()
-            llm_calls_total.labels(provider=provider_name, model=provider.default_model, status="error").inc()
+            llm_errors_total.labels(
+                provider=provider_name,
+                error_type="unknown",
+            ).inc()
+            llm_calls_total.labels(
+                provider=provider_name,
+                model=provider.default_model,
+                status="error",
+            ).inc()
             breaker.on_failure()
             raise
 
         duration = time.perf_counter() - start
 
         # 5. Record success metrics + cache
-        llm_calls_total.labels(provider=provider_name, model=response.model_name, status="success").inc()
-        llm_call_duration_seconds.labels(provider=provider_name, model=response.model_name).observe(duration)
-        llm_tokens_total.labels(provider=provider_name, model=response.model_name).inc(response.token_count)
+        model = response.model_name
+        llm_calls_total.labels(
+            provider=provider_name,
+            model=model,
+            status="success",
+        ).inc()
+        llm_call_duration_seconds.labels(
+            provider=provider_name,
+            model=model,
+        ).observe(duration)
+        llm_tokens_total.labels(
+            provider=provider_name,
+            model=model,
+        ).inc(response.token_count)
         circuit_breaker_open.labels(provider=provider_name).set(0)
 
         breaker.on_success()
@@ -201,10 +238,7 @@ class ProviderRegistry:
 
     def get_circuit_states(self) -> dict[str, str]:
         """Get circuit breaker states for Prometheus metrics."""
-        return {
-            name: breaker.state.value
-            for name, breaker in self._breakers.items()
-        }
+        return {name: breaker.state.value for name, breaker in self._breakers.items()}
 
 
 def create_registry(redis: aioredis.Redis) -> ProviderRegistry:

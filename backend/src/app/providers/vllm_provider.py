@@ -1,4 +1,7 @@
-"""vLLM provider — local, GPU-accelerated, OpenAI-compatible API. 793 tok/s (19x faster than Ollama)."""
+"""vLLM provider — local, GPU-accelerated, OpenAI-compatible API.
+
+793 tok/s with PagedAttention (19x faster than Ollama).
+"""
 
 import time
 
@@ -55,14 +58,14 @@ class VLLMProvider(LLMProvider):
                 json=payload,
                 timeout=config.timeout_s,
             )
-        except httpx.ConnectError:
+        except httpx.ConnectError as exc:
             raise LLMProviderError(
                 "vllm",
                 0,
                 f"Cannot connect to vLLM at {self._base_url}. Is it running?",
-            )
-        except httpx.TimeoutException:
-            raise LLMTimeoutError("vllm", config.timeout_s)
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError("vllm", config.timeout_s) from exc
 
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -77,12 +80,12 @@ class VLLMProvider(LLMProvider):
 
         try:
             text = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
+        except (KeyError, IndexError) as exc:
             raise LLMProviderError(
                 "vllm",
                 200,
                 f"Unexpected response format: {str(data)[:300]}",
-            )
+            ) from exc
 
         token_count = data.get("usage", {}).get("total_tokens", 0)
 

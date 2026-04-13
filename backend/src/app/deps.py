@@ -1,6 +1,7 @@
 """Dependency injection for FastAPI endpoints."""
 
-from typing import Annotated, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Annotated
 
 import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Security

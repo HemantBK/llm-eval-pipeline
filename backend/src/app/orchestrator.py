@@ -7,23 +7,21 @@ This is the beating heart of the pipeline. Everything else exists to support it.
 """
 
 import asyncio
+import time as _time
 import uuid
-from datetime import datetime, timezone
 
 import structlog
 
-from app.config import settings
 from app.errors.exceptions import (
     CircuitOpenError,
-    EvalPipelineError,
     JudgeParseError,
     LLMProviderError,
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from app.judge.engine import JudgeEngine, JudgeVerdict
+from app.judge.engine import JudgeEngine
 from app.judge.rubrics import auto_select_rubric, get_rubric
-from app.providers.base import GenerateConfig, LLMResponse
+from app.providers.base import GenerateConfig
 from app.providers.registry import ProviderRegistry
 from app.repositories import EvalRepository
 
@@ -31,10 +29,10 @@ logger = structlog.get_logger()
 
 # Per-provider concurrency limits (backpressure)
 PROVIDER_CONCURRENCY = {
-    "gemini": 3,   # 15 RPM → ~3 concurrent is safe
+    "gemini": 3,  # 15 RPM → ~3 concurrent is safe
     "openai": 10,  # 60 RPM → ~10 concurrent
-    "vllm": 50,    # local, go wild
-    "ollama": 5,   # CPU-bound, don't overwhelm
+    "vllm": 50,  # local, go wild
+    "ollama": 5,  # CPU-bound, don't overwhelm
 }
 
 # Overall run timeout
@@ -92,10 +90,7 @@ class EvalOrchestrator:
         This is the PRIMARY method that n8n calls.
         """
         # Auto-select rubric if not specified
-        if rubric_name == "auto":
-            rubric = auto_select_rubric(category)
-        else:
-            rubric = get_rubric(rubric_name)
+        rubric = auto_select_rubric(category) if rubric_name == "auto" else get_rubric(rubric_name)
 
         # If no run_id, create a one-off run
         if run_id is None:
@@ -150,17 +145,19 @@ class EvalOrchestrator:
                     },
                 )
                 # Return error result so n8n knows what failed
-                scored_results.append({
-                    "model": model,
-                    "provider": model,
-                    "response": "",
-                    "latency_ms": 0,
-                    "cached": False,
-                    "scores": {},
-                    "reasoning": {},
-                    "overall_pass": False,
-                    "error": str(result),
-                })
+                scored_results.append(
+                    {
+                        "model": model,
+                        "provider": model,
+                        "response": "",
+                        "latency_ms": 0,
+                        "cached": False,
+                        "scores": {},
+                        "reasoning": {},
+                        "overall_pass": False,
+                        "error": str(result),
+                    }
+                )
             else:
                 scored_results.append(result)
 
@@ -187,8 +184,11 @@ class EvalOrchestrator:
         Fan-out all prompts × models concurrently with backpressure.
         Supports resume from checkpoint (skip already-scored pairs).
         """
-        from app.metrics import eval_runs_active, eval_runs_total, eval_run_duration_seconds
-        import time as _time
+        from app.metrics import (
+            eval_run_duration_seconds,
+            eval_runs_active,
+            eval_runs_total,
+        )
 
         await self._repo.update_run_status(run_id, "running")
         eval_runs_active.inc()
@@ -212,10 +212,11 @@ class EvalOrchestrator:
                         category = prompt_data.get("category", "general")
 
                         # Auto-select rubric per prompt category
-                        if rubric_name == "auto":
-                            rubric = auto_select_rubric(category)
-                        else:
-                            rubric = get_rubric(rubric_name)
+                        rubric = (
+                            auto_select_rubric(category)
+                            if rubric_name == "auto"
+                            else get_rubric(rubric_name)
+                        )
 
                         for model_name in models:
                             # Skip if already completed (resume)
@@ -327,7 +328,9 @@ class EvalOrchestrator:
 
             # 5. Update overall_pass on the result
             from sqlalchemy import update as sa_update
+
             from app.models import EvalResult
+
             await self._repo.session.execute(
                 sa_update(EvalResult)
                 .where(EvalResult.id == result.id)
@@ -335,12 +338,8 @@ class EvalOrchestrator:
             )
 
             # 6. Record evaluation metrics
-            from app.metrics import (
-                eval_completed_total,
-                eval_failed_total,
-                eval_passed_total,
-                judge_score as judge_score_metric,
-            )
+            from app.metrics import eval_completed_total, eval_failed_total, eval_passed_total
+            from app.metrics import judge_score as judge_score_metric
 
             eval_completed_total.labels(provider=provider_name, category=category).inc()
             if verdict.overall_pass:
@@ -377,8 +376,13 @@ class EvalOrchestrator:
         """
         try:
             return await self._evaluate_single(**kwargs)
-        except (LLMProviderError, LLMTimeoutError, LLMRateLimitError,
-                CircuitOpenError, JudgeParseError) as e:
+        except (
+            LLMProviderError,
+            LLMTimeoutError,
+            LLMRateLimitError,
+            CircuitOpenError,
+            JudgeParseError,
+        ) as e:
             logger.error(
                 "Evaluation failed, sending to DLQ",
                 prompt_id=kwargs.get("prompt_id"),
@@ -398,7 +402,7 @@ class EvalOrchestrator:
                 },
             )
             return None
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "Unexpected evaluation error",
                 prompt_id=kwargs.get("prompt_id"),

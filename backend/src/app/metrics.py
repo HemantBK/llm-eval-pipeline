@@ -13,10 +13,12 @@ app_info = Info(
     "eval_pipeline",
     "LLM Eval Pipeline application info",
 )
-app_info.info({
-    "version": "0.1.0",
-    "judge_default": "gemini",
-})
+app_info.info(
+    {
+        "version": "0.1.0",
+        "judge_default": "gemini",
+    }
+)
 
 # ============================================================================
 # HTTP Request Metrics (FastAPI middleware)

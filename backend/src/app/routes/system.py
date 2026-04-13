@@ -1,7 +1,7 @@
 """System routes: health check, metrics, DLQ status."""
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 from prometheus_client import generate_latest
 
@@ -91,7 +91,11 @@ async def dlq_items(
                 "status": item.status,
                 "next_retry": item.next_retry.isoformat() if item.next_retry else None,
                 "created_at": item.created_at.isoformat() if item.created_at else None,
-                "prompt_preview": item.prompt_text[:100] + "..." if len(item.prompt_text) > 100 else item.prompt_text,
+                "prompt_preview": (
+                    item.prompt_text[:100] + "..."
+                    if len(item.prompt_text) > 100
+                    else item.prompt_text
+                ),
             }
             for item in items
         ],

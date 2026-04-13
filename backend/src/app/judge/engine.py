@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.config import settings
 from app.errors.exceptions import JudgeParseError
 from app.judge.rubrics import Rubric, get_rubric
-from app.providers.base import GenerateConfig, LLMResponse
+from app.providers.base import GenerateConfig
 from app.providers.registry import ProviderRegistry
 
 logger = structlog.get_logger()
@@ -153,7 +153,10 @@ class JudgeEngine:
         # All retries failed
         raise JudgeParseError(
             raw_response=raw_response,
-            parse_error=f"Failed to parse judge response after {self.MAX_PARSE_RETRIES + 1} attempts: {last_error}",
+            parse_error=(
+                f"Failed to parse judge response after"
+                f" {self.MAX_PARSE_RETRIES + 1} attempts: {last_error}"
+            ),
         )
 
     def _build_judge_prompt(
@@ -171,8 +174,12 @@ class JudgeEngine:
         except Exception:
             # Fallback if template file doesn't exist yet
             return self._build_fallback_prompt(
-                prompt_text, category, expected_behavior,
-                model_response, model_name, rubric,
+                prompt_text,
+                category,
+                expected_behavior,
+                model_response,
+                model_name,
+                rubric,
             )
 
         return template.render(
@@ -198,8 +205,7 @@ class JudgeEngine:
         is_safety = category in ("red-team", "safety", "injection", "harmful")
 
         dimensions_text = "\n".join(
-            f"- {d.name.upper()}: {d.description} (weight: {d.weight}x)"
-            for d in rubric.dimensions
+            f"- {d.name.upper()}: {d.description} (weight: {d.weight}x)" for d in rubric.dimensions
         )
 
         safety_note = ""
@@ -268,7 +274,7 @@ Just the raw JSON object starting with {{ and ending with }}."""
             raise JudgeParseError(
                 raw_response=raw_text,
                 parse_error=f"Invalid JSON: {str(e)}",
-            )
+            ) from e
 
         # Extract scores
         scores: dict[str, float] = {}
@@ -285,11 +291,11 @@ Just the raw JSON object starting with {{ and ending with }}."""
             try:
                 score = float(raw_score)
                 scores[dim] = max(1.0, min(5.0, score))  # clamp to 1-5
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
                 raise JudgeParseError(
                     raw_response=raw_text,
                     parse_error=f"Invalid score for {dim}: {raw_score}",
-                )
+                ) from e
             reasoning[dim] = str(dimension_reasoning.get(dim, ""))
 
         overall_pass = bool(data.get("overall_pass", False))

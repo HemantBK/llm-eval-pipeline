@@ -1,6 +1,5 @@
 """Evaluation endpoints — the core API that n8n calls."""
 
-import asyncio
 from uuid import UUID
 
 import structlog
@@ -11,7 +10,7 @@ from app.deps import DB, Auth, Redis
 from app.judge.engine import JudgeEngine
 from app.judge.rubrics import list_rubrics
 from app.orchestrator import EvalOrchestrator
-from app.providers.registry import ProviderRegistry, create_registry
+from app.providers.registry import create_registry
 from app.repositories import EvalRepository
 
 router = APIRouter()
@@ -26,13 +25,19 @@ class EvalPromptRequest(BaseModel):
 
     prompt: str = Field(..., min_length=1, description="The prompt text to evaluate")
     prompt_id: str = Field(default="", description="Human-readable prompt ID, e.g. CS-001")
-    category: str = Field(default="general", description="Category: coding, safety, reasoning, etc.")
+    category: str = Field(
+        default="general",
+        description="Category: coding, safety, reasoning, etc.",
+    )
     expected_behavior: str = Field(default="", description="What the model should do")
     models: list[str] = Field(
         default=["gemini"],
         description="Which models to evaluate: gemini, openai, vllm, ollama",
     )
-    rubric: str = Field(default="auto", description="Rubric name: auto, default, safety, coding, hallucination")
+    rubric: str = Field(
+        default="auto",
+        description="Rubric: auto, default, safety, coding, hallucination",
+    )
 
 
 class ScoreResult(BaseModel):
@@ -225,7 +230,7 @@ async def _run_batch_in_background(
                 rubric_name=rubric_name,
             )
             await session.commit()
-        except Exception as e:
+        except Exception:
             logger.exception("Background batch failed", run_id=str(run_id))
             await session.rollback()
             try:
@@ -301,8 +306,11 @@ async def resume_run(
 
 
 async def _run_resume_in_background(
-    run_id: UUID, prompts: list[dict], models: list[str],
-    rubric_name: str, redis,
+    run_id: UUID,
+    prompts: list[dict],
+    models: list[str],
+    rubric_name: str,
+    redis,
 ) -> None:
     """Background task for resuming a run."""
     from app.deps import _session_factory
@@ -322,7 +330,7 @@ async def _run_resume_in_background(
                 resume=True,  # skip already-scored pairs
             )
             await session.commit()
-        except Exception as e:
+        except Exception:
             logger.exception("Resume failed", run_id=str(run_id))
             await session.rollback()
 

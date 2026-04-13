@@ -55,8 +55,8 @@ class GeminiProvider(LLMProvider):
                 json=payload,
                 timeout=config.timeout_s,
             )
-        except httpx.TimeoutException:
-            raise LLMTimeoutError("gemini", config.timeout_s)
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError("gemini", config.timeout_s) from exc
 
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -72,12 +72,12 @@ class GeminiProvider(LLMProvider):
         # Extract text from Gemini response format
         try:
             text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
+        except (KeyError, IndexError) as exc:
             raise LLMProviderError(
                 "gemini",
                 200,
                 f"Unexpected response format: {str(data)[:300]}",
-            )
+            ) from exc
 
         # Extract token count if available
         token_count = 0

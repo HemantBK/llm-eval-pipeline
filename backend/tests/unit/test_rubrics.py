@@ -1,7 +1,5 @@
 """Tests for rubric selection and configuration."""
 
-import pytest
-
 from app.judge.rubrics import (
     CODING_RUBRIC,
     DEFAULT_RUBRIC,

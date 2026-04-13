@@ -12,7 +12,6 @@ from app.errors.exceptions import (
 
 
 class TestExceptions:
-
     def test_provider_error(self):
         e = LLMProviderError("gemini", 500, "Internal Server Error")
         assert e.provider == "gemini"

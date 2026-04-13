@@ -4,7 +4,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 
 from app.providers.base import LLMResponse
 from app.providers.cache import ResponseCache
@@ -67,13 +66,15 @@ class TestCacheHit:
 
     @pytest.mark.asyncio
     async def test_returns_response_on_hit(self, cache, mock_redis):
-        cached_data = json.dumps({
-            "text": "cached response",
-            "token_count": 42,
-            "model_name": "gemini-2.0-flash",
-            "provider": "gemini",
-            "original_latency_ms": 500,
-        })
+        cached_data = json.dumps(
+            {
+                "text": "cached response",
+                "token_count": 42,
+                "model_name": "gemini-2.0-flash",
+                "provider": "gemini",
+                "original_latency_ms": 500,
+            }
+        )
         mock_redis.get = AsyncMock(return_value=cached_data)
 
         result = await cache.get("prompt", "gemini-2.0-flash", 0.7)
