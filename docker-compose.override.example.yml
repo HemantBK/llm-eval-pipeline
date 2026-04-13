@@ -1,0 +1,35 @@
+# ============================================================================
+# docker-compose.override.yml — CPU-only mode (no GPU / no vLLM)
+#
+# Use this if you DON'T have an NVIDIA GPU.
+# Copy to docker-compose.override.yml and it will auto-load.
+#
+# Usage:
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#   docker-compose up -d
+# ============================================================================
+
+version: "3.8"
+
+services:
+  # Replace vLLM with Ollama for CPU-based local inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: eval-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - eval-network
+
+  # Override FastAPI to point to Ollama instead of vLLM
+  fastapi:
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - VLLM_BASE_URL=http://ollama:11434/v1  # Ollama also has OpenAI-compat endpoint
+
+volumes:
+  ollama_data:
+    name: eval-ollama-data

@@ -1,0 +1,270 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Pipeline Health",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Request Rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[5m])",
+          "legendFormat": "{{ method }} {{ path }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "title": "Request Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Error Rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "expr": "rate(llm_errors_total[5m])",
+          "legendFormat": "{{ provider }} - {{ error_type }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "errors/s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 20 }
+        }
+      }
+    },
+    {
+      "title": "LLM Performance",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "title": "LLM Latency by Provider",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(llm_call_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{ provider }} p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(llm_call_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{ provider }} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Cache Hit Rate",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "targets": [
+        {
+          "expr": "sum(rate(cache_hits_total[5m])) / (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m]))) * 100",
+          "legendFormat": "Hit Rate %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 30, "color": "yellow" },
+              { "value": 60, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "DLQ Pending Items",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "targets": [
+        {
+          "expr": "dlq_pending_total",
+          "legendFormat": "Pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 5, "color": "yellow" },
+              { "value": 20, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Evaluation Results",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "collapsed": false
+    },
+    {
+      "title": "Evaluations Completed",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 19 },
+      "targets": [
+        {
+          "expr": "eval_completed_total",
+          "legendFormat": "Total"
+        }
+      ]
+    },
+    {
+      "title": "Pass Rate",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 19 },
+      "targets": [
+        {
+          "expr": "eval_passed_total / eval_completed_total * 100",
+          "legendFormat": "Pass Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 50, "color": "yellow" },
+              { "value": 80, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Judge Scores Distribution",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(judge_score_bucket[5m]))",
+          "legendFormat": "{{ dimension }} median"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 1,
+          "max": 5
+        }
+      }
+    },
+    {
+      "title": "Rate Limiting",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false
+    },
+    {
+      "title": "Rate Limit Usage by Provider",
+      "type": "bargauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "rate_limit_usage_percent",
+          "legendFormat": "{{ provider }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Circuit Breaker Status",
+      "type": "table",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "expr": "circuit_breaker_state",
+          "legendFormat": "{{ provider }}",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["llm", "evaluation", "pipeline"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "LLM Eval Pipeline",
+  "uid": "eval-pipeline-main",
+  "version": 1
+}

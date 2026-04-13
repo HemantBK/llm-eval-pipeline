@@ -1,0 +1,63 @@
+# Prometheus alert rules for LLM Eval Pipeline
+groups:
+  - name: eval-pipeline-alerts
+    rules:
+
+      # High error rate on LLM calls
+      - alert: HighLLMErrorRate
+        expr: rate(llm_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM error rate above 10% for 2 minutes"
+          description: "Provider {{ $labels.provider }} has error rate {{ $value | humanize }}/s"
+
+      # Circuit breaker opened
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_open == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker OPEN for {{ $labels.provider }}"
+          description: "Provider {{ $labels.provider }} has been down for over 1 minute"
+
+      # DLQ backlog growing
+      - alert: DLQBacklog
+        expr: dlq_pending_total > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead letter queue has {{ $value }} pending items"
+          description: "Failed evaluations are piling up. Check provider health."
+
+      # Eval run stuck
+      - alert: EvalRunStuck
+        expr: eval_run_duration_seconds > 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Eval run stuck in 'running' state for over 1 hour"
+
+      # High API latency
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 30 seconds"
+          description: "p95 latency is {{ $value | humanize }}s"
+
+      # FastAPI down
+      - alert: FastAPIDown
+        expr: up{job="eval-pipeline"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FastAPI backend is unreachable"
+          description: "The eval pipeline backend has been down for over 1 minute"

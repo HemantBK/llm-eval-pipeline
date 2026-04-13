@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Lint: ruff + mypy
+  # -------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          cd backend
+          pip install ruff mypy pydantic-settings
+
+      - name: Ruff check
+        run: cd backend && ruff check src/ tests/
+
+      - name: Ruff format check
+        run: cd backend && ruff format --check src/ tests/
+
+  # -------------------------------------------------------------------------
+  # Test: pytest with Postgres + Redis service containers
+  # -------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: eval_pipeline_test
+          POSTGRES_USER: eval
+          POSTGRES_PASSWORD: eval_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eval"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://eval:eval_test@localhost:5432/eval_pipeline_test
+      REDIS_URL: redis://localhost:6379/0
+      API_KEY: test-api-key
+      GEMINI_API_KEY: test-key
+      LOG_LEVEL: WARNING
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          cd backend
+          pip install -e ".[test]"
+
+      - name: Run tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short --cov=src/app --cov-report=xml
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: backend/coverage.xml
+
+  # -------------------------------------------------------------------------
+  # Build: Docker image
+  # -------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t llm-eval-pipeline:${{ github.sha }} ./backend
+
+      - name: Verify image runs
+        run: |
+          docker run --rm llm-eval-pipeline:${{ github.sha }} python -c "from app.main import app; print('OK')"

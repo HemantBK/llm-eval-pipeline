@@ -1,0 +1,314 @@
+{
+  "name": "LLM Eval Pipeline — Hybrid",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-schedule",
+      "name": "Daily 9am Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 500],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {}
+      },
+      "id": "sheets-read",
+      "name": "Read Test Prompts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [450, 400],
+      "notes": "Connect your Google Sheet here.\nSheet columns: prompt_id, category, prompt, difficulty, expected_behavior"
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "split-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/eval/prompt",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"prompt\": $json.prompt,\n  \"prompt_id\": $json.prompt_id || \"\",\n  \"category\": $json.category || \"general\",\n  \"expected_behavior\": $json.expected_behavior || \"\",\n  \"models\": [\"gemini\", \"vllm\"],\n  \"rubric\": \"auto\"\n}) }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "call-fastapi",
+      "name": "Evaluate via FastAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [950, 400],
+      "notes": "This ONE call does everything:\n1. Cache check\n2. Rate limit\n3. LLM call (Gemini + vLLM)\n4. Judge scoring (6 dimensions)\n5. Save to PostgreSQL\n6. Return scored results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract results from FastAPI response\nconst input = $input.first().json;\nconst promptId = input.prompt_id || 'unknown';\nconst results = input.results || [];\n\n// Flatten: one output item per model result\nconst output = results.map(r => ({\n  json: {\n    prompt_id: promptId,\n    model: r.model,\n    provider: r.provider,\n    overall_pass: r.overall_pass,\n    accuracy: r.scores?.accuracy || 0,\n    completeness: r.scores?.completeness || 0,\n    code_quality: r.scores?.code_quality || 0,\n    safety: r.scores?.safety || 0,\n    hallucination: r.scores?.hallucination || 0,\n    reasoning: r.scores?.reasoning || 0,\n    latency_ms: r.latency_ms,\n    cached: r.cached,\n    response_preview: (r.response || '').substring(0, 200),\n    error: r.error || '',\n    timestamp: new Date().toISOString()\n  }\n}));\n\nreturn output;"
+      },
+      "id": "parse-results",
+      "name": "Parse Scored Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Results"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      },
+      "id": "sheets-write",
+      "name": "Write Results to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1450, 400],
+      "notes": "Appends scored results to the 'Results' tab.\nColumns: prompt_id, model, overall_pass, accuracy, safety, ..."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "batch-check",
+              "leftValue": "={{ $node['Split In Batches'].context.noItemsLeft }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-done",
+      "name": "All Batches Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1700, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all results into a summary report\nconst allItems = $input.all();\n\n// Count totals\nconst total = allItems.length;\nconst passed = allItems.filter(i => i.json.overall_pass === true).length;\nconst failed = total - passed;\n\n// Group by model\nconst modelStats = {};\nallItems.forEach(item => {\n  const m = item.json.model;\n  if (!modelStats[m]) {\n    modelStats[m] = { total: 0, passed: 0, scores: [] };\n  }\n  modelStats[m].total++;\n  if (item.json.overall_pass) modelStats[m].passed++;\n  modelStats[m].scores.push({\n    accuracy: item.json.accuracy,\n    safety: item.json.safety,\n    hallucination: item.json.hallucination,\n    reasoning: item.json.reasoning,\n    code_quality: item.json.code_quality,\n    completeness: item.json.completeness\n  });\n});\n\n// Calculate averages per model\nconst modelReport = {};\nfor (const [model, stats] of Object.entries(modelStats)) {\n  const avg = (dim) => {\n    const vals = stats.scores.map(s => s[dim]).filter(v => v > 0);\n    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : 'N/A';\n  };\n  modelReport[model] = {\n    total: stats.total,\n    passed: stats.passed,\n    pass_rate: ((stats.passed / stats.total) * 100).toFixed(1) + '%',\n    avg_accuracy: avg('accuracy'),\n    avg_safety: avg('safety'),\n    avg_hallucination: avg('hallucination'),\n    avg_reasoning: avg('reasoning'),\n    avg_code_quality: avg('code_quality'),\n    avg_completeness: avg('completeness')\n  };\n}\n\nreturn [{\n  json: {\n    report_type: 'LLM Evaluation Summary',\n    generated_at: new Date().toISOString(),\n    total_evaluations: total,\n    total_passed: passed,\n    total_failed: failed,\n    overall_pass_rate: ((passed / total) * 100).toFixed(1) + '%',\n    model_breakdown: modelReport\n  }\n}];"
+      },
+      "id": "summary-report",
+      "name": "Generate Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1950, 300],
+      "notes": "Aggregates all results:\n- Overall pass rate\n- Per-model breakdown\n- Average scores per dimension"
+    },
+    {
+      "parameters": {
+        "content": "## LLM Evaluation Complete!\n\n**Total Evaluations:** {{ $json.total_evaluations }}\n**Passed:** {{ $json.total_passed }} | **Failed:** {{ $json.total_failed }}\n**Overall Pass Rate:** {{ $json.overall_pass_rate }}\n\n### Model Breakdown\n{{ JSON.stringify($json.model_breakdown, null, 2) }}",
+        "options": {}
+      },
+      "id": "send-notification",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2200, 300],
+      "notes": "Replace with Slack/Email/Webhook notification if desired"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Test Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 9am Schedule": {
+      "main": [
+        [
+          {
+            "node": "Read Test Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Test Prompts": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Evaluate via FastAPI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All Batches Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate via FastAPI": {
+      "main": [
+        [
+          {
+            "node": "Parse Scored Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Scored Results": {
+      "main": [
+        [
+          {
+            "node": "Write Results to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Results to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Batches Done?": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary Report": {
+      "main": [
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "LLM Evaluation",
+      "id": "1"
+    },
+    {
+      "name": "Red-Teaming",
+      "id": "2"
+    }
+  ],
+  "triggerCount": 2,
+  "pinData": {}
+}

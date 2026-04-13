@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment / Secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+service-account*.json
+token.json
+
+# Database
+*.db
+*.sqlite3
+*.sql.bak
+
+# Docker
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# pytest
+.pytest_cache/
+
+# Node (in case any JS tooling is added)
+node_modules/
+package-lock.json
+yarn.lock
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# n8n data (local Docker volume)
+n8n_data/
+
+# Ollama models (large binary files)
+ollama_data/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

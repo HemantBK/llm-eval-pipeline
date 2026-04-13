@@ -1,0 +1,24 @@
+# Prometheus configuration for LLM Eval Pipeline
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Load alert rules
+rule_files:
+  - "alerts.yml"
+
+# Scrape targets
+scrape_configs:
+  # FastAPI application metrics
+  - job_name: "eval-pipeline"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["fastapi:8000"]
+        labels:
+          service: "eval-pipeline"
+          environment: "local"
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]

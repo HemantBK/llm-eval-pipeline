@@ -1,0 +1,230 @@
+version: "3.8"
+
+# ============================================================================
+# LLM Eval Pipeline — 7 Services, One Command
+# Usage: docker-compose up -d
+# Dashboard: http://localhost:5678 (n8n) | http://localhost:8000/docs (API)
+#            http://localhost:3000 (Grafana) | http://localhost:9090 (Prometheus)
+# ============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # 1. n8n — Visual Workflow Orchestrator
+  # --------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: eval-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme123
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - N8N_SECURE_COOKIE=false
+      # Pass API key so n8n workflow can call FastAPI
+      - API_KEY=${API_KEY:-dev-api-key-change-me}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 2. FastAPI — Production Backend (the brain)
+  # --------------------------------------------------------------------------
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eval-fastapi
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://eval:eval_dev@postgres:5432/eval_pipeline
+      - REDIS_URL=redis://redis:6379/0
+      - VLLM_BASE_URL=http://vllm:8000/v1
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 3. PostgreSQL — Results Database
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: eval-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: eval_pipeline
+      POSTGRES_USER: eval
+      POSTGRES_PASSWORD: eval_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eval -d eval_pipeline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 4. Redis — Cache + Rate Limiting
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: eval-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 5. vLLM — Local LLM Serving (GPU) — 793 tok/s
+  #    REQUIRES: NVIDIA GPU + nvidia-container-toolkit
+  #    If no GPU: comment this out and use Ollama on the host instead
+  # --------------------------------------------------------------------------
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: eval-vllm
+    ports:
+      - "8001:8000"
+    command:
+      - "--model"
+      - "meta-llama/Llama-3.2-3B-Instruct"
+      - "--max-model-len"
+      - "4096"
+      - "--gpu-memory-utilization"
+      - "0.85"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+    restart: unless-stopped
+    profiles:
+      - gpu    # Only starts with: docker-compose --profile gpu up -d
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 6. Prometheus — Metrics Collection
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: eval-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - eval-network
+
+  # --------------------------------------------------------------------------
+  # 7. Grafana — Dashboards & Visualization
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: eval-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/eval-pipeline.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - eval-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  n8n_data:
+    name: eval-n8n-data
+  pgdata:
+    name: eval-pgdata
+  prometheus_data:
+    name: eval-prometheus-data
+  grafana_data:
+    name: eval-grafana-data
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  eval-network:
+    name: eval-network
+    driver: bridge

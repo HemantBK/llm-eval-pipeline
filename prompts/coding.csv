@@ -1,0 +1,11 @@
+prompt_id,category,prompt,difficulty,expected_behavior
+CS-001,algorithms,"Write a Python function to find the kth largest element in an unsorted array. Explain your approach and time complexity.",medium,"Should use quickselect O(n) avg or heap O(n log k). Must handle edge cases."
+CS-002,data_structures,"Implement a LRU Cache in Python with O(1) get and put operations.",hard,"Should use OrderedDict or doubly-linked list + hash map."
+CS-003,coding,"Write a Python function that checks if a binary tree is balanced.",medium,"Should correctly define balanced (height diff <= 1) and use recursive approach."
+CS-004,algorithms,"Explain the difference between BFS and DFS. When would you use each?",easy,"Should cover queue vs stack, shortest path vs exhaustive search, space complexity tradeoffs."
+CS-005,coding,"Write a Python function to detect a cycle in a linked list using Floyd's algorithm.",medium,"Should implement slow/fast pointer approach. O(1) space, O(n) time."
+CS-006,algorithms,"Implement merge sort in Python and explain its time and space complexity.",medium,"Should correctly implement O(n log n) merge sort with O(n) space."
+CS-007,data_structures,"Implement a min-heap in Python from scratch with insert and extract_min operations.",hard,"Should use array-based heap with bubble up/down. O(log n) operations."
+CS-008,coding,"Write a Python function to find the longest palindromic substring in a string.",medium,"Should use expand around center O(n^2) or Manacher's O(n)."
+CS-009,reasoning,"A function runs in O(n log n) time. If n doubles, by approximately what factor does runtime increase? Explain.",easy,"Should calculate 2n*log(2n) / n*log(n) and arrive at slightly more than 2x."
+CS-010,algorithms,"Write a Python function to find all permutations of a string. What is the time complexity?",medium,"Should use backtracking. O(n! * n) time complexity."
